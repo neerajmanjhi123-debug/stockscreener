@@ -1,2 +1,4 @@
-print("Hello Stock Screener")
-print("Hello Stock Screener")
+import streamlit as st
+
+st.write("Hello Stock Screener")
+st.write("Hello Stock Screener")
