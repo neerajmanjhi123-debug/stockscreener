@@ -1,1 +1,2 @@
-# stockscreener
+My first GitHub repository
+
