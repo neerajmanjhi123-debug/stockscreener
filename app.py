@@ -2,12 +2,13 @@ import streamlit as st
 import pandas as pd
 from nifty200_list import nifty200_tickers
 
-st.title("📊 NIFTY 200 Stocks List")
+st.set_page_config(page_title="NIFTY 200 Stock Screener", layout="wide")
 
-st.write("Below is the list of all NIFTY 200 stock tickers (NSE):")
+st.title("📊 NIFTY 200 Stocks Screener")
+st.write("Below is the list of all NIFTY 200 stock tickers (NSE).")
 
-# DataFrame banayein
+# Convert list to pandas DataFrame
 df = pd.DataFrame({"Ticker": nifty200_tickers})
 
-# Table show karein
+# Show the table in Streamlit
 st.dataframe(df)
