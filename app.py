@@ -1,19 +1,13 @@
 import streamlit as st
 import pandas as pd
+from nifty200_list import nifty200_tickers
 
-# NIFTY 500 tickers list (partial example)
-tickers = [
-    "360ONE.NS","3MINDIA.NS","ABB.NS","ACC.NS","AIAENG.NS",
-    "APLAPOLLO.NS","AUBANK.NS","AARTIIND.NS","AAVAS.NS",
-    "ABBOTINDIA.NS","ADANIENT.NS","ADANIGREEN.NS","ADANIPORTS.NS"
-    # ... (continue with full list available from gist)
-]
+st.title("📊 NIFTY 200 Stocks List")
 
-# Dikhane ke liye pandas DataFrame
-df = pd.DataFrame({"Ticker": tickers})
+st.write("Below is the list of all NIFTY 200 stock tickers (NSE):")
 
-st.title("📈 NIFTY 500 Stocks List")
-st.write("Below are the NIFTY 500 tickers loaded from GitHub gist:")
+# DataFrame banayein
+df = pd.DataFrame({"Ticker": nifty200_tickers})
 
-# Table show karo
+# Table show karein
 st.dataframe(df)
