@@ -1,49 +1,41 @@
 import streamlit as st
 import pandas as pd
+import yfinance as yf
 
-# Page Configuration
-st.set_page_config(page_title="Nifty 200 Stock List", layout="wide")
+st.set_page_config(page_title="Nifty 200 Live Dashboard", layout="wide")
 
-st.title("📊 Nifty 200 Stocks List")
-st.markdown("Yeh app NSE ki official website se Nifty 200 stocks ki live list fetch karti hai.")
+st.title("🚀 Nifty 200 Live Stock Tracker")
 
-@st.cache_data # Data ko baar-baar download hone se rokne ke liye
-def load_data():
+@st.cache_data
+def get_nifty200_symbols():
     url = "https://archives.nseindia.com/content/indices/ind_nifty200list.csv"
-    try:
-        # NSE data fetch karne ke liye pandas ka use
-        df = pd.read_csv(url)
-        return df
-    except Exception as e:
-        st.error(f"Data load karne mein error aaya: {e}")
-        return None
+    df = pd.read_csv(url)
+    # yfinance ke liye NSE stocks mein '.NS' jodna zaroori hai
+    df['Ticker'] = df['Symbol'] + ".NS"
+    return df
 
-# Data Load Karein
-data = load_data()
+# Data loading
+df_list = get_nifty200_symbols()
 
-if data is not None:
-    # Sidebar Filters
-    st.sidebar.header("Filter Options")
-    search = st.sidebar.text_input("Stock Symbol Search:")
+# Sidebar for selection
+st.sidebar.header("Settings")
+if st.sidebar.button('🔄 Refresh Data'):
+    st.rerun()
 
-    if search:
-        data = data[data['Symbol'].str.contains(search.upper())]
+# Sirf top 10 ya selected stocks ka live price dikhane ke liye (performance ke liye)
+st.subheader("Live Market Overview")
+selected_stocks = st.multiselect("Stocks Select Karein:", df_list['Symbol'].tolist(), default=df_list['Symbol'].head(10).tolist())
 
-    # Metrics
-    col1, col2 = st.columns(2)
-    col1.metric("Total Stocks", len(data))
-    col2.metric("Index", "Nifty 200")
+if selected_stocks:
+    tickers = [s + ".NS" for s in selected_stocks]
+    # yfinance se live data fetch karna
+    data = yf.download(tickers, period="1d", interval="1m")['Close'].iloc[-1]
+    
+    # Displaying in columns
+    cols = st.columns(4)
+    for i, (symbol, price) in enumerate(data.items()):
+        cols[i % 4].metric(label=symbol.replace(".NS", ""), value=f"₹{price:.2f}")
 
-    # Display Table
-    st.dataframe(data, use_container_width=True)
-
-    # Download Button
-    csv = data.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="Download List as CSV",
-        data=csv,
-        file_name='nifty200_list.csv',
-        mime='text/csv',
-    )
-else:
-    st.write("Filhaal data available nahi hai.")
+st.write("---")
+st.subheader("Full Nifty 200 List")
+st.dataframe(df_list[['Symbol', 'Company Name', 'Industry']], use_container_width=True)
