@@ -1,40 +1,48 @@
 import streamlit as st
 import pandas as pd
 import yfinance as yf
-from streamlit_autorefresh import st_autorefresh
 
-# --------------------------------------------------
-# PAGE CONFIG
-# --------------------------------------------------
-st.set_page_config(
-    page_title="Nifty 200 Losers Dashboard",
-    layout="wide"
-)
+st.set_page_config(page_title="Nifty 200 Dashboard", layout="wide")
 
-st_autorefresh(interval=30 * 1000, key="refresh")
+st.title("📊 Nifty 200 Dashboard")
 
-st.title("📉 Nifty 200 Live Losers Dashboard")
-st.markdown(
-    f"**Last Updated:** {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}"
-)
-
-# --------------------------------------------------
-# FETCH NIFTY 200 LIST
-# --------------------------------------------------
 @st.cache_data
-def get_nifty200_list():
+def get_nifty200():
     url = "https://archives.nseindia.com/content/indices/ind_nifty200list.csv"
     df = pd.read_csv(url)
     df["Ticker"] = df["Symbol"] + ".NS"
     return df
 
-# --------------------------------------------------
-# FETCH LIVE PRICES
-# --------------------------------------------------
-def fetch_live_prices(tickers):
+@st.cache_data
+def get_prices(tickers):
     data = yf.download(
-        tickers=tickers,
+        tickers,
         period="1d",
+        interval="1d",
+        progress=False
+    )["Close"]
+
+    return data.iloc[-1]
+
+df = get_nifty200()
+tickers = df["Ticker"].tolist()
+
+prices = get_prices(tickers)
+
+df["Price"] = df["Ticker"].map(prices)
+
+sector = st.multiselect(
+    "Filter by Sector",
+    options=sorted(df["Industry"].dropna().unique())
+)
+
+if sector:
+    df = df[df["Industry"].isin(sector)]
+
+st.dataframe(
+    df[["Symbol", "Company Name", "Industry", "Price"]],
+    use_container_width=True
+)        period="1d",
         interval="1m",
         group_by="ticker",
         progress=False
