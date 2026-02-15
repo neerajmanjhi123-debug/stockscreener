@@ -1,159 +1,4 @@
-import streamlit as st
-import pandas as pd
-import numpy as np
-import yfinance as yf
-
-# =====================================================
-# PAGE CONFIG
-# =====================================================
-st.set_page_config(page_title="NIFTY 200 Stock Screener", layout="wide")
-st.title("📊 NIFTY 200 Advanced Stock Screener")
-
-# =====================================================
-# LOAD STOCK LIST FROM GITHUB
-# =====================================================
-@st.cache_data(ttl=300)
-def load_universe():
-    try:
-        url = "https://raw.githubusercontent.com/yourname/nifty-universe/main/nifty200.csv"
-        df = pd.read_csv(url)
-        return df
-    except Exception:
-        st.error("GitHub se NIFTY 200 list load nahi ho saki.")
-        return pd.DataFrame(columns=["Symbol", "Stock Name", "Sector"])
-
-# =====================================================
-# LOAD LIVE PRICE (Near realtime – yfinance)
-# =====================================================
-@st.cache_data(ttl=300)
-def load_price(symbols):
-    symbols_ns = [s + ".NS" for s in symbols]
-    data = yf.download(symbols_ns, period="1d", interval="5m", group_by="ticker")
-
-    rows = []
-    for s in symbols_ns:
-        try:
-            close = data[s]["Close"].iloc[-1]
-            prev = data[s]["Close"].iloc[-2]
-            rows.append([
-                s.replace(".NS", ""),
-                round(close, 2),
-                round(close - prev, 2),
-                round((close - prev) / prev * 100, 2)
-            ])
-        except Exception:
-            continue
-
-    return pd.DataFrame(rows, columns=["Symbol", "Price", "Change", "Change %"])
-
-# =====================================================
-# DATA PREPARATION
-# =====================================================
-df = load_universe()
-
-if df.empty:
-    st.stop()
-
-price_df = load_price(df["Symbol"].tolist())
-df = df.merge(price_df, on="Symbol", how="left")
-
-df.insert(0, "S.No", range(1, len(df) + 1))
-
-# Dummy / calculated columns (safe)
-df["Volume"] = np.random.randint(100000, 5000000, len(df))
-df["RSI"] = np.random.randint(30, 80, len(df))
-df["ROE (%)"] = np.random.randint(5, 35, len(df))
-df["ROCE (%)"] = np.random.randint(5, 35, len(df))
-df["Debt-to-Equity"] = np.round(np.random.uniform(0, 1, len(df)), 2)
-df["Promoter Holding (%)"] = np.random.randint(30, 80, len(df))
-df["PE"] = np.random.randint(10, 40, len(df))
-df["Interest Coverage"] = np.random.randint(5, 30, len(df))
-df["Unusual Volume"] = np.where(
-    df["Volume"] > df["Volume"].median() * 1.5, "YES", "NO"
-)
-
-# =====================================================
-# CONDITIONS BUTTON
-# =====================================================
-if st.button("📌 Conditions"):
-    st.info("Left side filters apply honge jab checkbox ON hoga")
-
-# =====================================================
-# LAYOUT
-# =====================================================
-left, right = st.columns([1, 3])
-
-# =====================================================
-# LEFT SIDE FILTERS
-# =====================================================
-with left:
-    st.subheader("🔍 Filters")
-
-    show_tech = st.checkbox("Show Technical Columns", True)
-    show_fund = st.checkbox("Show Fundamental Columns", True)
-
-    # ---------- STOCK TYPE ----------
-    st.markdown("### Stock Type")
-    gainer = st.checkbox("Gainer")
-    loser = st.checkbox("Loser")
-
-    # ---------- GAP ----------
-    st.markdown("### Gap Filter")
-    use_gap = st.checkbox("Apply Gap Filter")
-    gap_pct = st.number_input("Gap %", value=1.0)
-
-    # ---------- VOLUME ----------
-    st.markdown("### Volume")
-    high_vol = st.checkbox("High Volume")
-    low_vol = st.checkbox("Low Volume")
-    unusual = st.checkbox("Unusual Volume Only")
-
-    # ---------- TIMEFRAME ----------
-    st.markdown("### Timeframe")
-    tf = st.selectbox("Type", ["Minute", "Hour", "Day", "Week", "Month"])
-    tf_val = st.number_input("Timeframe Value", min_value=1, value=5)
-
-    # ---------- FUNDAMENTAL ----------
-    st.markdown("### Fundamental")
-    use_roe = st.checkbox("ROE Filter")
-    roe = st.slider("ROE % (Best 15–20)", 0, 50, (15, 20))
-
-    use_roce = st.checkbox("ROCE Filter")
-    roce = st.slider("ROCE % Min", 0, 50, 15)
-
-    use_de = st.checkbox("Debt-to-Equity")
-    de = st.slider("D/E Range", 0.0, 2.0, (0.0, 0.50))
-
-    use_pe = st.checkbox("PE Filter")
-    pe = st.slider("PE Range", 0, 100, (10, 30))
-
-    # ---------- TECHNICAL ----------
-    st.markdown("### Technical")
-    use_rsi = st.checkbox("RSI Filter")
-    rsi = st.slider("RSI Range (40–70)", 0, 100, (40, 70))
-
-# =====================================================
-# APPLY FILTERS (ONLY IF CHECKED)
-# =====================================================
-filtered = df.copy()
-
-if gainer:
-    filtered = filtered[filtered["Change %"] > 0]
-
-if loser:
-    filtered = filtered[filtered["Change %"] < 0]
-
-if use_gap:
-    filtered = filtered[filtered["Change %"].abs() >= gap_pct]
-
-if high_vol:
-    filtered = filtered[filtered["Volume"] > filtered["Volume"].median()]
-
-if low_vol:
-    filtered = filtered[filtered["Volume"] < filtered["Volume"].median()]
-
-if unusual:
-    filtered = filtered[filtered["Unusual Volume"] == "YES"]
+iltered = filtered[filtered["Unusual Volume"] == "YES"]
 
 if use_roe:
     filtered = filtered[filtered["ROE (%)"].between(*roe)]
@@ -478,3 +323,226 @@ st.dataframe(
 )
 
 st.success("✅ Code fixed | No syntax error | All features preserved")
+import streamlit as st
+import pandas as pd
+import numpy as np
+
+st.set_page_config(page_title="Advanced Stock Screener", layout="wide")
+
+st.title("📊 Advanced Stock Screener (Demo Version)")
+
+# --------------------------------------------------
+# DEMO STOCK DATA (5 Stocks)
+# --------------------------------------------------
+data = [
+    {
+        "Symbol": "RELIANCE",
+        "Stock Name": "Reliance Industries",
+        "Price": 2850.50,
+        "Change": 25.40,
+        "Percent Change": 0.90,
+        "Sector": "Energy",
+        "Volume": 5200000,
+        "ROE (%)": 18,
+        "ROCE (%)": 20,
+        "Debt-to-Equity": 0.35,
+        "Promoter Holding (%)": 50.6,
+        "Pledged Shares (%)": 0,
+        "Sales Growth (%)": 15,
+        "Profit Growth (%)": 14,
+        "Interest Coverage": 6,
+        "Dividend Yield (%)": 1.2,
+        "Upper BB": True,
+        "Lower BB": False
+    },
+    {
+        "Symbol": "TCS",
+        "Stock Name": "Tata Consultancy Services",
+        "Price": 3920.10,
+        "Change": -40.20,
+        "Percent Change": -1.02,
+        "Sector": "IT",
+        "Volume": 2100000,
+        "ROE (%)": 42,
+        "ROCE (%)": 45,
+        "Debt-to-Equity": 0.05,
+        "Promoter Holding (%)": 72,
+        "Pledged Shares (%)": 0,
+        "Sales Growth (%)": 12,
+        "Profit Growth (%)": 13,
+        "Interest Coverage": 20,
+        "Dividend Yield (%)": 2.1,
+        "Upper BB": False,
+        "Lower BB": True
+    },
+    {
+        "Symbol": "INFY",
+        "Stock Name": "Infosys",
+        "Price": 1580.00,
+        "Change": 18.25,
+        "Percent Change": 1.17,
+        "Sector": "IT",
+        "Volume": 3400000,
+        "ROE (%)": 30,
+        "ROCE (%)": 32,
+        "Debt-to-Equity": 0.0,
+        "Promoter Holding (%)": 13,
+        "Pledged Shares (%)": 0,
+        "Sales Growth (%)": 10,
+        "Profit Growth (%)": 11,
+        "Interest Coverage": 15,
+        "Dividend Yield (%)": 2.5,
+        "Upper BB": True,
+        "Lower BB": False
+    },
+    {
+        "Symbol": "ICICIBANK",
+        "Stock Name": "ICICI Bank",
+        "Price": 1045.80,
+        "Change": -8.10,
+        "Percent Change": -0.77,
+        "Sector": "Banking",
+        "Volume": 6100000,
+        "ROE (%)": 16,
+        "ROCE (%)": 18,
+        "Debt-to-Equity": 0.45,
+        "Promoter Holding (%)": 0,
+        "Pledged Shares (%)": 0,
+        "Sales Growth (%)": 19,
+        "Profit Growth (%)": 22,
+        "Interest Coverage": 4,
+        "Dividend Yield (%)": 1.0,
+        "Upper BB": False,
+        "Lower BB": False
+    },
+    {
+        "Symbol": "HDFCBANK",
+        "Stock Name": "HDFC Bank",
+        "Price": 1460.60,
+        "Change": 12.80,
+        "Percent Change": 0.88,
+        "Sector": "Banking",
+        "Volume": 4800000,
+        "ROE (%)": 17,
+        "ROCE (%)": 19,
+        "Debt-to-Equity": 0.4,
+        "Promoter Holding (%)": 25,
+        "Pledged Shares (%)": 0,
+        "Sales Growth (%)": 14,
+        "Profit Growth (%)": 16,
+        "Interest Coverage": 5,
+        "Dividend Yield (%)": 1.3,
+        "Upper BB": True,
+        "Lower BB": False
+    },
+]
+
+df = pd.DataFrame(data)
+
+# --------------------------------------------------
+# SIDEBAR FILTERS
+# --------------------------------------------------
+st.sidebar.header("🔍 Filters")
+
+# -------- Price Action --------
+st.sidebar.subheader("Price Action")
+all_stock = st.sidebar.checkbox("All Stocks", True)
+gainer = st.sidebar.checkbox("Gainer")
+loser = st.sidebar.checkbox("Loser")
+
+# -------- Volume Filter --------
+st.sidebar.subheader("Volume")
+high_volume = st.sidebar.checkbox("High Volume")
+low_volume = st.sidebar.checkbox("Low Volume")
+
+# -------- Technical Filters --------
+st.sidebar.subheader("Technical")
+upper_bb = st.sidebar.checkbox("Upper Bollinger Band")
+lower_bb = st.sidebar.checkbox("Lower Bollinger Band")
+
+# -------- Fundamental Filters --------
+st.sidebar.subheader("Fundamental (Tick to Apply)")
+
+roe_filter = st.sidebar.checkbox("ROE 15% - 25%")
+roce_filter = st.sidebar.checkbox("ROCE > 15%")
+de_filter = st.sidebar.checkbox("Debt-to-Equity 0 - 0.5")
+promoter_filter = st.sidebar.checkbox("Promoter Holding 50% - 75%")
+pledge_filter = st.sidebar.checkbox("Pledged Shares = 0")
+growth_filter = st.sidebar.checkbox("Sales & Profit Growth 10% - 20% (3Y)")
+interest_filter = st.sidebar.checkbox("Interest Coverage > 3")
+dividend_filter = st.sidebar.checkbox("Dividend Yield 1% - 3%")
+
+# --------------------------------------------------
+# APPLY FILTERS
+# --------------------------------------------------
+filtered_df = df.copy()
+
+if not all_stock:
+    if gainer:
+        filtered_df = filtered_df[filtered_df["Percent Change"] > 0]
+    if loser:
+        filtered_df = filtered_df[filtered_df["Percent Change"] < 0]
+
+if high_volume:
+    filtered_df = filtered_df[filtered_df["Volume"] > filtered_df["Volume"].mean()]
+
+if low_volume:
+    filtered_df = filtered_df[filtered_df["Volume"] < filtered_df["Volume"].mean()]
+
+if upper_bb:
+    filtered_df = filtered_df[filtered_df["Upper BB"] == True]
+
+if lower_bb:
+    filtered_df = filtered_df[filtered_df["Lower BB"] == True]
+
+if roe_filter:
+    filtered_df = filtered_df[(filtered_df["ROE (%)"] >= 15) & (filtered_df["ROE (%)"] <= 25)]
+
+if roce_filter:
+    filtered_df = filtered_df[filtered_df["ROCE (%)"] > 15]
+
+if de_filter:
+    filtered_df = filtered_df[(filtered_df["Debt-to-Equity"] >= 0) & (filtered_df["Debt-to-Equity"] <= 0.5)]
+
+if promoter_filter:
+    filtered_df = filtered_df[(filtered_df["Promoter Holding (%)"] >= 50) & (filtered_df["Promoter Holding (%)"] <= 75)]
+
+if pledge_filter:
+    filtered_df = filtered_df[filtered_df["Pledged Shares (%)"] == 0]
+
+if growth_filter:
+    filtered_df = filtered_df[
+        (filtered_df["Sales Growth (%)"] >= 10) &
+        (filtered_df["Profit Growth (%)"] >= 10)
+    ]
+
+if interest_filter:
+    filtered_df = filtered_df[filtered_df["Interest Coverage"] > 3]
+
+if dividend_filter:
+    filtered_df = filtered_df[
+        (filtered_df["Dividend Yield (%)"] >= 1) &
+        (filtered_df["Dividend Yield (%)"] <= 3)
+    ]
+
+# --------------------------------------------------
+# FINAL DISPLAY (ONLY MAIN COLUMNS)
+# --------------------------------------------------
+st.subheader("📋 Stock List")
+
+display_df = filtered_df[[
+    "Symbol",
+    "Stock Name",
+    "Price",
+    "Change",
+    "Percent Change",
+    "Sector"
+]]
+
+display_df["Price"] = display_df["Price"].map(lambda x: f"{x:.2f}")
+display_df["Change"] = display_df["Change"].map(lambda x: f"{x:.2f}")
+display_df["Percent Change"] = display_df["Percent Change"].map(lambda x: f"{x:.2f}")
+
+display_df.index = np.arange(1, len(display_df) + 1)
+
+st.dataframe(display_df, use_container_width=True)
