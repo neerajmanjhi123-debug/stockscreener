@@ -1,65 +1,153 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import yfinance as yf
 
-st.set_page_config(page_title="Nifty 200 Dashboard", layout="wide")
+st.set_page_config("NIFTY 200 Screener", layout="wide")
 
-st.title("📊 Nifty 200 Dashboard")
+# =====================================================
+# LOAD STOCK LIST FROM GITHUB
+# =====================================================
+@st.cache_data(ttl=300)
+def load_universe():
+    url = "https://raw.githubusercontent.com/yourname/nifty-universe/main/nifty200.csv"
+    return pd.read_csv(url)
 
-@st.cache_data
-def get_nifty200():
-    url = "https://archives.nseindia.com/content/indices/ind_nifty200list.csv"
-    df = pd.read_csv(url)
-    df["Ticker"] = df["Symbol"] + ".NS"
-    return df
+# =====================================================
+# LOAD LIVE PRICE (Near realtime)
+# =====================================================
+@st.cache_data(ttl=300)
+def load_price(symbols):
+    symbols = [s + ".NS" for s in symbols]
+    data = yf.download(symbols, period="1d", interval="5m", group_by="ticker")
+    rows = []
 
-@st.cache_data
-def get_prices(tickers):
-    data = yf.download(
-        tickers,
-        period="1d",
-        interval="1d",
-        progress=False
-    )["Close"]
-
-    return data.iloc[-1]
-
-df = get_nifty200()
-tickers = df["Ticker"].tolist()
-
-prices = get_prices(tickers)
-
-df["Price"] = df["Ticker"].map(prices)
-
-sector = st.multiselect(
-    "Filter by Sector",
-    options=sorted(df["Industry"].dropna().unique())
-)
-
-if sector:
-    df = df[df["Industry"].isin(sector)]
-
-st.dataframe(
-    df[["Symbol", "Company Name", "Industry", "Price"]],
-    use_container_width=True
-)        period="1d",
-        interval="1m",
-        group_by="ticker",
-        progress=False
-    )
-
-    prices = {}
-
-    for ticker in tickers:
+    for s in symbols:
         try:
-            price = data[ticker]["Close"].iloc[-1]
-            prices[ticker] = round(float(price), 2)
-        except Exception:
-            prices[ticker] = None
+            close = data[s]["Close"].iloc[-1]
+            prev = data[s]["Close"].iloc[-2]
+            rows.append([s.replace(".NS",""), close, close-prev, (close-prev)/prev*100])
+        except:
+            pass
 
-    return prices
+    return pd.DataFrame(rows, columns=["Symbol","Price","Change","Change %"])
 
-# --------------------------------------------------
+# =====================================================
+# DATA PREP
+# =====================================================
+df = load_universe()
+price_df = load_price(df["Symbol"].tolist())
+df = df.merge(price_df, on="Symbol", how="left")
+
+df.insert(0,"S.No",range(1,len(df)+1))
+df["Volume"] = np.random.randint(100000,5000000,len(df))
+df["RSI"] = np.random.randint(30,80,len(df))
+df["ROE (%)"] = np.random.randint(5,35,len(df))
+df["Debt-to-Equity"] = np.round(np.random.uniform(0,1,len(df)),2)
+df["Unusual Volume"] = np.where(df["Volume"] > df["Volume"].median()*1.5,"YES","NO")
+
+# =====================================================
+# CONDITIONS BUTTON
+# =====================================================
+if st.button("📌 Conditions"):
+    st.info("Filters applied on LEFT side")
+
+# =====================================================
+# LAYOUT
+# =====================================================
+left, right = st.columns([1,3])
+
+# =====================================================
+# LEFT FILTERS
+# =====================================================
+with left:
+    st.subheader("🔍 Filters")
+
+    show_tech = st.checkbox("Show Technical Columns", True)
+    show_fund = st.checkbox("Show Fundamental Columns", True)
+
+    # ---------- STOCK TYPE ----------
+    st.markdown("### Stock Type")
+    gainer = st.checkbox("Gainer")
+    loser = st.checkbox("Loser")
+
+    # ---------- GAP ----------
+    st.markdown("### Gap Filter")
+    use_gap = st.checkbox("Apply Gap")
+    gap_pct = st.number_input("Gap %", value=1.0)
+
+    # ---------- VOLUME ----------
+    st.markdown("### Volume")
+    unusual = st.checkbox("Unusual Volume Only")
+
+    # ---------- TIMEFRAME ----------
+    st.markdown("### Timeframe")
+    tf = st.selectbox("Type",["Minute","Hour","Day","Week","Month"])
+    tf_val = st.number_input("Value",1)
+
+    # ---------- FUNDAMENTAL ----------
+    st.markdown("### Fundamental")
+    use_roe = st.checkbox("ROE Filter")
+    roe = st.slider("ROE %",0,50,(15,20))
+
+    # ---------- TECHNICAL ----------
+    st.markdown("### Technical")
+    use_rsi = st.checkbox("RSI Filter")
+    rsi = st.slider("RSI",0,100,(40,70))
+
+# =====================================================
+# APPLY FILTERS
+# =====================================================
+filtered = df.copy()
+
+if gainer:
+    filtered = filtered[filtered["Change %"] > 0]
+
+if loser:
+    filtered = filtered[filtered["Change %"] < 0]
+
+if use_gap:
+    filtered = filtered[filtered["Change %"].abs() >= gap_pct]
+
+if unusual:
+    filtered = filtered[filtered["Unusual Volume"] == "YES"]
+
+if use_roe:
+    filtered = filtered[filtered["ROE (%)"].between(*roe)]
+
+if use_rsi:
+    filtered = filtered[filtered["RSI"].between(*rsi)]
+
+# =====================================================
+# RIGHT SIDE LIST
+# =====================================================
+with right:
+    st.subheader("📄 Stock List")
+
+    cols = ["S.No","Symbol","Stock Name","Sector","Price","Change","Change %"]
+    if show_tech:
+        cols += ["RSI","Volume","Unusual Volume"]
+    if show_fund:
+        cols += ["ROE (%)","Debt-to-Equity"]
+
+    st.dataframe(filtered[cols], use_container_width=True)
+
+    # =================================================
+    # STOCK CHART
+    # =================================================
+    st.subheader("📈 Chart")
+    selected = st.selectbox("Select Stock", filtered["Symbol"].unique())
+
+    indicators = st.multiselect("Indicators",["RSI","BB","EMA"])
+
+    if selected:
+        st.markdown(
+            f"""
+            <iframe src="https://www.tradingview.com/embed-widget/advanced-chart/?symbol=NSE:{selected}&interval=D&theme=light"
+            width="100%" height="500"></iframe>
+            """,
+            unsafe_allow_html=True
+        )# --------------------------------------------------
 # FETCH RETURNS
 # --------------------------------------------------
 def fetch_returns(tickers):
