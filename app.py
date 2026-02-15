@@ -3,38 +3,211 @@ import pandas as pd
 import numpy as np
 import yfinance as yf
 
-st.set_page_config("NIFTY 200 Screener", layout="wide")
+# =====================================================
+# PAGE CONFIG
+# =====================================================
+st.set_page_config(page_title="NIFTY 200 Stock Screener", layout="wide")
+st.title("📊 NIFTY 200 Advanced Stock Screener")
 
 # =====================================================
 # LOAD STOCK LIST FROM GITHUB
 # =====================================================
 @st.cache_data(ttl=300)
 def load_universe():
-    url = "https://raw.githubusercontent.com/yourname/nifty-universe/main/nifty200.csv"
-    return pd.read_csv(url)
+    try:
+        url = "https://raw.githubusercontent.com/yourname/nifty-universe/main/nifty200.csv"
+        df = pd.read_csv(url)
+        return df
+    except Exception:
+        st.error("GitHub se NIFTY 200 list load nahi ho saki.")
+        return pd.DataFrame(columns=["Symbol", "Stock Name", "Sector"])
 
 # =====================================================
-# LOAD LIVE PRICE (Near realtime)
+# LOAD LIVE PRICE (Near realtime – yfinance)
 # =====================================================
 @st.cache_data(ttl=300)
 def load_price(symbols):
-    symbols = [s + ".NS" for s in symbols]
-    data = yf.download(symbols, period="1d", interval="5m", group_by="ticker")
-    rows = []
+    symbols_ns = [s + ".NS" for s in symbols]
+    data = yf.download(symbols_ns, period="1d", interval="5m", group_by="ticker")
 
-    for s in symbols:
+    rows = []
+    for s in symbols_ns:
         try:
             close = data[s]["Close"].iloc[-1]
             prev = data[s]["Close"].iloc[-2]
-            rows.append([s.replace(".NS",""), close, close-prev, (close-prev)/prev*100])
-        except:
-            pass
+            rows.append([
+                s.replace(".NS", ""),
+                round(close, 2),
+                round(close - prev, 2),
+                round((close - prev) / prev * 100, 2)
+            ])
+        except Exception:
+            continue
 
-    return pd.DataFrame(rows, columns=["Symbol","Price","Change","Change %"])
+    return pd.DataFrame(rows, columns=["Symbol", "Price", "Change", "Change %"])
 
 # =====================================================
-# DATA PREP
+# DATA PREPARATION
 # =====================================================
+df = load_universe()
+
+if df.empty:
+    st.stop()
+
+price_df = load_price(df["Symbol"].tolist())
+df = df.merge(price_df, on="Symbol", how="left")
+
+df.insert(0, "S.No", range(1, len(df) + 1))
+
+# Dummy / calculated columns (safe)
+df["Volume"] = np.random.randint(100000, 5000000, len(df))
+df["RSI"] = np.random.randint(30, 80, len(df))
+df["ROE (%)"] = np.random.randint(5, 35, len(df))
+df["ROCE (%)"] = np.random.randint(5, 35, len(df))
+df["Debt-to-Equity"] = np.round(np.random.uniform(0, 1, len(df)), 2)
+df["Promoter Holding (%)"] = np.random.randint(30, 80, len(df))
+df["PE"] = np.random.randint(10, 40, len(df))
+df["Interest Coverage"] = np.random.randint(5, 30, len(df))
+df["Unusual Volume"] = np.where(
+    df["Volume"] > df["Volume"].median() * 1.5, "YES", "NO"
+)
+
+# =====================================================
+# CONDITIONS BUTTON
+# =====================================================
+if st.button("📌 Conditions"):
+    st.info("Left side filters apply honge jab checkbox ON hoga")
+
+# =====================================================
+# LAYOUT
+# =====================================================
+left, right = st.columns([1, 3])
+
+# =====================================================
+# LEFT SIDE FILTERS
+# =====================================================
+with left:
+    st.subheader("🔍 Filters")
+
+    show_tech = st.checkbox("Show Technical Columns", True)
+    show_fund = st.checkbox("Show Fundamental Columns", True)
+
+    # ---------- STOCK TYPE ----------
+    st.markdown("### Stock Type")
+    gainer = st.checkbox("Gainer")
+    loser = st.checkbox("Loser")
+
+    # ---------- GAP ----------
+    st.markdown("### Gap Filter")
+    use_gap = st.checkbox("Apply Gap Filter")
+    gap_pct = st.number_input("Gap %", value=1.0)
+
+    # ---------- VOLUME ----------
+    st.markdown("### Volume")
+    high_vol = st.checkbox("High Volume")
+    low_vol = st.checkbox("Low Volume")
+    unusual = st.checkbox("Unusual Volume Only")
+
+    # ---------- TIMEFRAME ----------
+    st.markdown("### Timeframe")
+    tf = st.selectbox("Type", ["Minute", "Hour", "Day", "Week", "Month"])
+    tf_val = st.number_input("Timeframe Value", min_value=1, value=5)
+
+    # ---------- FUNDAMENTAL ----------
+    st.markdown("### Fundamental")
+    use_roe = st.checkbox("ROE Filter")
+    roe = st.slider("ROE % (Best 15–20)", 0, 50, (15, 20))
+
+    use_roce = st.checkbox("ROCE Filter")
+    roce = st.slider("ROCE % Min", 0, 50, 15)
+
+    use_de = st.checkbox("Debt-to-Equity")
+    de = st.slider("D/E Range", 0.0, 2.0, (0.0, 0.50))
+
+    use_pe = st.checkbox("PE Filter")
+    pe = st.slider("PE Range", 0, 100, (10, 30))
+
+    # ---------- TECHNICAL ----------
+    st.markdown("### Technical")
+    use_rsi = st.checkbox("RSI Filter")
+    rsi = st.slider("RSI Range (40–70)", 0, 100, (40, 70))
+
+# =====================================================
+# APPLY FILTERS (ONLY IF CHECKED)
+# =====================================================
+filtered = df.copy()
+
+if gainer:
+    filtered = filtered[filtered["Change %"] > 0]
+
+if loser:
+    filtered = filtered[filtered["Change %"] < 0]
+
+if use_gap:
+    filtered = filtered[filtered["Change %"].abs() >= gap_pct]
+
+if high_vol:
+    filtered = filtered[filtered["Volume"] > filtered["Volume"].median()]
+
+if low_vol:
+    filtered = filtered[filtered["Volume"] < filtered["Volume"].median()]
+
+if unusual:
+    filtered = filtered[filtered["Unusual Volume"] == "YES"]
+
+if use_roe:
+    filtered = filtered[filtered["ROE (%)"].between(*roe)]
+
+if use_roce:
+    filtered = filtered[filtered["ROCE (%)"] >= roce]
+
+if use_de:
+    filtered = filtered[filtered["Debt-to-Equity"].between(*de)]
+
+if use_pe:
+    filtered = filtered[filtered["PE"].between(*pe)]
+
+if use_rsi:
+    filtered = filtered[filtered["RSI"].between(*rsi)]
+
+# =====================================================
+# RIGHT SIDE LIST + CHART
+# =====================================================
+with right:
+    st.subheader("📄 Stock List")
+
+    cols = [
+        "S.No", "Symbol", "Stock Name", "Sector",
+        "Price", "Change", "Change %"
+    ]
+
+    if show_tech:
+        cols += ["RSI", "Volume", "Unusual Volume"]
+
+    if show_fund:
+        cols += [
+            "ROE (%)", "ROCE (%)",
+            "Debt-to-Equity", "PE", "Interest Coverage"
+        ]
+
+    st.dataframe(filtered[cols], use_container_width=True)
+
+    # ---------------- CHART ----------------
+    st.subheader("📈 Stock Chart")
+
+    selected_stock = st.selectbox(
+        "Select Stock",
+        filtered["Symbol"].unique()
+    )
+
+    if selected_stock:
+        st.markdown(
+            f"""
+            <iframe src="https://www.tradingview.com/embed-widget/advanced-chart/?symbol=NSE:{selected_stock}&interval=D&theme=light"
+            width="100%" height="500" frameborder="0"></iframe>
+            """,
+            unsafe_allow_html=True
+    )# =====================================================
 df = load_universe()
 price_df = load_price(df["Symbol"].tolist())
 df = df.merge(price_df, on="Symbol", how="left")
