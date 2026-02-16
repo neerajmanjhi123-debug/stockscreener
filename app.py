@@ -2,12 +2,12 @@ import streamlit as st
 import pandas as pd
 import yfinance as yf
 
-st.set_page_config(page_title="Nifty 200 Live Professional Screener", layout="wide")
-st.title("📊 Nifty 200 Live Advanced Screener")
+st.set_page_config(page_title="Nifty 200 Live Screener", layout="wide")
+st.title("📊 Nifty 200 Live Screener")
 
-# ======================================================
-# NIFTY 200 SYMBOLS LIST
-# ======================================================
+# --------------------------------------------------
+# COMPLETE NIFTY 200 LIST (Updated)
+# --------------------------------------------------
 nifty_200_tickers = [
     "ABB.NS", "ACC.NS", "ADANIENSOL.NS", "ADANIENT.NS", "ADANIGREEN.NS", "ADANIPORTS.NS", "ADANIPOWER.NS", "ATGL.NS", "ABCAPITAL.NS", "ABFRL.NS", 
     "ALKEM.NS", "AMBUJACEM.NS", "APOLLOHOSP.NS", "APOLLOTYRE.NS", "ASHOKLEY.NS", "ASIANPAINT.NS", "ASTRAL.NS", "AUIPRO.NS", "AUBANK.NS", "AUROPHARMA.NS", 
@@ -29,96 +29,84 @@ nifty_200_tickers = [
     "UNIONBANK.NS", "UNITDSPR.NS", "UPL.NS", "VBL.NS", "VEDL.NS", "VOLTAS.NS", "WHIRLPOOL.NS", "WIPRO.NS", "YESBANK.NS", "ZEEL.NS", "ZOMATO.NS", "ZYDUSLIFE.NS"
 ]
 
-# ======================================================
-# LIVE DATA FETCHING (OPTIMIZED)
-# ======================================================
-@st.cache_data(ttl=300) # Refresh every 5 mins
-def get_live_data(tickers):
-    # Batch download to save time
+# --------------------------------------------------
+# LIVE FETCHING
+# --------------------------------------------------
+@st.cache_data(ttl=60)
+def fetch_live_data(tickers):
+    # Fetching 2 days of data to compare Today's Open with Yesterday's Close (for Gap Up/Down)
     data = yf.download(tickers, period="2d", interval="1d", group_by='ticker', progress=False)
     
-    final_list = []
+    rows = []
     for ticker in tickers:
         try:
-            hist = data[ticker]
-            current_price = hist['Close'].iloc[-1]
-            prev_close = hist['Close'].iloc[-2]
-            volume = hist['Volume'].iloc[-1]
+            stock_data = data[ticker]
+            current_price = stock_data['Close'].iloc[-1]
+            prev_close = stock_data['Close'].iloc[-2]
+            today_open = stock_data['Open'].iloc[-1]
             
             change = current_price - prev_close
-            p_change = (change / prev_close) * 100
+            pct_change = (change / prev_close) * 100
             
-            # Simple RSI Calculation for demo (Technical)
-            delta = hist['Close'].diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-            rs = gain / loss
-            rsi = 100 - (100 / (1 + rs.iloc[-1]))
+            # Gap Calculation
+            gap_pct = ((today_open - prev_close) / prev_close) * 100
 
-            final_list.append({
+            rows.append({
                 "Symbol": ticker.replace(".NS", ""),
-                "Price": round(current_price, 2),
-                "Change": round(change, 2),
-                "Change %": round(p_change, 2),
-                "Volume": int(volume),
-                "RSI (14)": round(rsi, 2) if not pd.isna(rsi) else 50,
-                "MA Trend": "Above MA" if current_price > hist['Close'].rolling(20).mean().iloc[-1] else "Below MA"
+                "Price": current_price,
+                "Change": change,
+                "Percent Change": pct_change,
+                "Gap %": gap_pct
             })
         except:
             continue
-    return pd.DataFrame(final_list)
+    return pd.DataFrame(rows)
 
 # Load Data
-with st.spinner("Fetching Live Nifty 200 Data..."):
-    df = get_live_data(nifty_200_tickers)
+with st.spinner("Fetching Nifty 200 Live Data..."):
+    df = fetch_live_data(nifty_200_tickers)
 
-# ======================================================
-# SIDEBAR FILTERS (Fixed for Live Data)
-# ======================================================
-st.sidebar.header("🔍 Filters")
+# --------------------------------------------------
+# FILTERS
+# --------------------------------------------------
+st.sidebar.header("🔍 Stock Filters")
+filter_type = st.sidebar.radio(
+    "Select View:",
+    ["All Stocks", "Gainer", "Loser", "Gap Up", "Gap Down"]
+)
 
-# ---------- STOCK TYPE ----------
-with st.sidebar.expander("📌 Price Action", expanded=True):
-    action = st.radio("Show:", ["All", "Gainer", "Loser"])
-
-# ---------- TECHNICAL ----------
-with st.sidebar.expander("📉 Technical Filters"):
-    use_rsi = st.sidebar.checkbox("Filter by RSI")
-    rsi_val = st.sidebar.slider("RSI Range", 0, 100, (30, 70))
-    
-    use_ma = st.sidebar.checkbox("Filter by MA Trend")
-    ma_choice = st.sidebar.selectbox("Condition", ["Above MA", "Below MA"])
-
-# ======================================================
-# APPLY FILTERS
-# ======================================================
+# Apply Logic
 filtered_df = df.copy()
 
-if action == "Gainer":
-    filtered_df = filtered_df[filtered_df["Change %"] > 0]
-elif action == "Loser":
-    filtered_df = filtered_df[filtered_df["Change %"] < 0]
+if filter_type == "Gainer":
+    filtered_df = filtered_df[filtered_df["Percent Change"] > 0]
+elif filter_type == "Loser":
+    filtered_df = filtered_df[filtered_df["Percent Change"] < 0]
+elif filter_type == "Gap Up":
+    filtered_df = filtered_df[filtered_df["Gap %"] > 0.5] # Min 0.5% Gap
+elif filter_type == "Gap Down":
+    filtered_df = filtered_df[filtered_df["Gap %"] < -0.5]
 
-if use_rsi:
-    filtered_df = filtered_df[filtered_df["RSI (14)"].between(rsi_val[0], rsi_val[1])]
+# Sorting
+filtered_df = filtered_df.sort_values(by="Percent Change", ascending=False)
 
-if use_ma:
-    filtered_df = filtered_df[filtered_df["MA Trend"] == ma_choice]
+# --------------------------------------------------
+# FORMATTING & DISPLAY
+# --------------------------------------------------
+st.subheader(f"📋 {filter_type} List ({len(filtered_df)})")
 
-# ======================================================
-# DISPLAY
-# ======================================================
-st.subheader(f"📄 Live Stocks ({len(filtered_df)})")
+# Decimal formatting to .00
+formatted_df = filtered_df.copy()
+formatted_df["Price"] = formatted_df["Price"].map("{:.2f}".format)
+formatted_df["Change"] = formatted_df["Change"].map("{:.2f}".format)
+formatted_df["Percent Change"] = formatted_df["Percent Change"].map("{:.2f}%".format)
+formatted_df["Gap %"] = formatted_df["Gap %"].map("{:.2f}%".format)
 
-# Simple Styling for better look
-def color_change(val):
-    color = 'green' if val > 0 else 'red'
-    return f'color: {color}'
-
+# Display table
 st.dataframe(
-    filtered_df.style.applymap(color_change, subset=['Change', 'Change %']),
+    formatted_df[["Symbol", "Price", "Change", "Percent Change", "Gap %"]],
     use_container_width=True,
     hide_index=True
 )
 
-st.info("💡 Tip: Fundamental data (ROE, P/E) takes longer to fetch for 200 stocks via free APIs. Use paid API like Dhan/Upstox for real-time fundamental screening.")
+st.success("✅ Live Data Updated")
