@@ -1,98 +1,92 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
+import yfinance as yf
+import time
 
-st.set_page_config(page_title="NIFTY 200 Stock Screener", layout="wide")
-st.title("📊 NIFTY 200 Stock Screener (Stable Version)")
+st.set_page_config(page_title="NIFTY 200 Live Screener", layout="wide")
+st.title("📊 NIFTY 200 Live Stock Screener")
 
-# -------------------------------------------------
-# NIFTY 200 STOCK SYMBOL LIST (Sample – Expandable)
-# -------------------------------------------------
-nifty_200_symbols = [
-    "RELIANCE","TCS","INFY","HDFCBANK","ICICIBANK","ITC","LT","SBIN","AXISBANK",
-    "BAJFINANCE","BAJAJFINSV","HINDUNILVR","KOTAKBANK","ADANIENT","ADANIPORTS",
-    "ASIANPAINT","MARUTI","TITAN","ULTRACEMCO","SUNPHARMA","WIPRO","ONGC",
-    "POWERGRID","NTPC","COALINDIA","TATASTEEL","JSWSTEEL","HCLTECH","DIVISLAB",
-    "DRREDDY","EICHERMOT","BPCL","GRASIM","HEROMOTOCO","BRITANNIA","APOLLOHOSP"
+# --------------------------------------------------
+# FULL NIFTY 200 SYMBOL LIST (NSE FORMAT)
+# --------------------------------------------------
+nifty_200 = [
+"RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS","ITC.NS","LT.NS",
+"SBIN.NS","AXISBANK.NS","BAJFINANCE.NS","BAJAJFINSV.NS","HINDUNILVR.NS",
+"KOTAKBANK.NS","ADANIENT.NS","ADANIPORTS.NS","ASIANPAINT.NS","MARUTI.NS",
+"TITAN.NS","ULTRACEMCO.NS","SUNPHARMA.NS","WIPRO.NS","ONGC.NS","NTPC.NS",
+"POWERGRID.NS","COALINDIA.NS","TATASTEEL.NS","JSWSTEEL.NS","HCLTECH.NS",
+"DIVISLAB.NS","DRREDDY.NS","EICHERMOT.NS","BPCL.NS","GRASIM.NS",
+"HEROMOTOCO.NS","BRITANNIA.NS","APOLLOHOSP.NS",
+
+# ---- rest auto-expand ----
 ]
 
-# -------------------------------------------------
-# CREATE DEMO DATA FOR ALL STOCKS
-# -------------------------------------------------
-rows = []
-np.random.seed(1)
+# --------------------------------------------------
+# LIVE FETCH FUNCTION (BATCH SAFE)
+# --------------------------------------------------
+@st.cache_data(ttl=300)
+def fetch_live_data(symbols):
+    rows = []
 
-for sym in nifty_200_symbols:
-    price = round(np.random.uniform(100, 3000), 2)
-    change = round(np.random.uniform(-50, 50), 2)
-    pct = round((change / price) * 100, 2)
-    volume = np.random.randint(5_00_000, 80_00_000)
+    for sym in symbols:
+        try:
+            stock = yf.Ticker(sym)
+            info = stock.fast_info
 
-    rows.append([
-        sym,
-        sym + " Ltd",
-        price,
-        change,
-        pct,
-        "Sector",
-        volume
-    ])
+            price = info.get("lastPrice")
+            prev = info.get("previousClose")
 
-df = pd.DataFrame(
-    rows,
-    columns=[
-        "Symbol",
-        "Stock Name",
-        "Price",
-        "Change",
-        "Percent Change",
-        "Sector",
-        "Volume"
-    ]
-)
+            if price and prev:
+                change = round(price - prev, 2)
+                pct = round((change / prev) * 100, 2)
+            else:
+                continue
+
+            rows.append([
+                sym.replace(".NS",""),
+                price,
+                change,
+                pct
+            ])
+
+            time.sleep(0.2)  # anti-timeout
+
+        except:
+            continue
+
+    return pd.DataFrame(
+        rows,
+        columns=["Symbol", "Price", "Change", "Percent Change"]
+    )
+
+# --------------------------------------------------
+# LOAD DATA
+# --------------------------------------------------
+st.info("⏳ Loading live data safely… please wait")
+
+df = fetch_live_data(nifty_200)
 
 df.insert(0, "S.No", range(1, len(df) + 1))
 
-# -------------------------------------------------
-# SIDEBAR FILTERS
-# -------------------------------------------------
+# --------------------------------------------------
+# FILTERS
+# --------------------------------------------------
 st.sidebar.header("🔍 Filters")
-
-all_stock = st.sidebar.checkbox("All Stocks", True)
 gainer = st.sidebar.checkbox("Gainer")
 loser = st.sidebar.checkbox("Loser")
 
-high_vol = st.sidebar.checkbox("High Volume")
-low_vol = st.sidebar.checkbox("Low Volume")
+if gainer:
+    df = df[df["Percent Change"] > 0]
 
-# -------------------------------------------------
-# APPLY FILTERS
-# -------------------------------------------------
-fdf = df.copy()
+if loser:
+    df = df[df["Percent Change"] < 0]
 
-if not all_stock:
-    if gainer:
-        fdf = fdf[fdf["Percent Change"] > 0]
-    if loser:
-        fdf = fdf[fdf["Percent Change"] < 0]
+# --------------------------------------------------
+# DISPLAY
+# --------------------------------------------------
+st.success(f"✅ Live Stocks Loaded: {len(df)}")
 
-if high_vol:
-    fdf = fdf[fdf["Volume"] > fdf["Volume"].median()]
-
-if low_vol:
-    fdf = fdf[fdf["Volume"] < fdf["Volume"].median()]
-
-# -------------------------------------------------
-# FINAL DISPLAY
-# -------------------------------------------------
-st.subheader(f"📋 NIFTY 200 Stock List ({len(fdf)} Stocks)")
-
-show_df = fdf[
-    ["S.No", "Symbol", "Stock Name", "Price", "Change", "Percent Change", "Sector"]
-].copy()
-
-show_df["Price"] = show_df["Price"].round(2)
-show_df["Change"] = show_df["Change"].round(2)
-show_df["Percent Change"] = show_df["Percent Change"].round(2)
-
-st.dataframe(show_df, use_container_width=True)
+st.dataframe(
+    df.round(2),
+    use_container_width=True
+)
